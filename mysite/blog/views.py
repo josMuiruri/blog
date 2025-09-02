@@ -1,16 +1,16 @@
+from django.core.mail import send_mail
 from django.core.paginator import EmptyPage, PageNotAnInteger, Paginator
 from django.shortcuts import get_object_or_404, render
-from django.http import Http404
-from . models import Post
+from django.views.decorators.http import require_POST
 from django.views.generic import ListView
-from django.core.mail import send_mail
 
-from . forms import EmailPostForm 
-
+from . forms import CommentForm, EmailPostForm 
+from . models import Post
 
 # Create your views here.
 class PostListView(ListView):
     """Alternative way"""
+
     queryset = Post.published.all()
     context_object_name = 'posts'
     paginate_by = 5
@@ -32,8 +32,28 @@ class PostListView(ListView):
 
 
 def post_detail(request, year, month, day, post):
-    post = get_object_or_404(Post, status=Post.Status.PUBLISHED, slug=post, publish__year=year, publish__month=month, publish__day=day)
-    return render(request, 'blog/post/detail.html', {'post': post})
+    post = get_object_or_404( 
+        Post, 
+        status=Post.Status.PUBLISHED, 
+        slug=post, 
+        publish__year=year, 
+        publish__month=month, 
+        publish__day=day,
+    )
+    # List of active comments for this post
+    comments = post.comments.filter(active=True)
+    # Form for users to comment
+    form = CommentForm()
+
+    return render( 
+        request, 
+        'blog/post/detail.html', 
+        { 
+            'post': post, 
+            'comments': comments, 
+            'form': form 
+        }, 
+    )
 
 
 def post_share(request, post_id):
@@ -75,5 +95,30 @@ def post_share(request, post_id):
             'post': post, 
             'form': form, 
             'sent': sent 
+        }, 
+    )
+
+
+@require_POST
+def post_comment(request, post_id):
+    post = get_object_or_404( 
+        Post, 
+        id=post_id, 
+        status=Post.Status.PUBLISHED
+    )
+    comment = None
+    form = CommentForm(data=request.POST)
+    if form.is_valid():
+        # Create a Comment obj without saving it to the db
+        comment = form.save(commit=False)
+        comment.post = post
+        comment.save()
+    return render( 
+        request, 
+        'blog/post/comment.html', 
+        { 
+            'post': post, 
+            'form': form, 
+            'comment': comment 
         }, 
     )
